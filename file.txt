@@ -1,0 +1,6 @@
+C:\Users\ronjo\AppData\Local\Programs\Python\Python310\Lib\site-packages\tensorflow\include\external\local_config_python\numpy_include
+
+
+C:\Users\ronjo\AppData\Local\Programs\Python\Python310\include
+
+C:\Users\ronjo\AppData\Local\Programs\Python\Python310\libs
