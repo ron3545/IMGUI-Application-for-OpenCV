@@ -13,12 +13,15 @@ using namespace CPlusPlusLogging;
 Logger* Logger::m_Instance = 0;
 // Log file name. File name should be change from here only
 const string logFileName = "MyLogFile.log";
+const string openvino = "OpenVino_LogFile.log";
 
 Logger::Logger()
 {
     m_File.open(logFileName.c_str(), ios::out | ios::app);
-    m_LogLevel = LOG_LEVEL_TRACE;
-    m_LogType = FILE_LOG;
+    OpenVino_Logs.open(openvino.c_str(), ios::out | ios::app);
+
+    m_LogLevel = LogLevel::LOG_LEVEL_TRACE;
+    m_LogType = LogType::FILE_LOG;
 
     // Initialize mutex
 #ifdef _WIN64
@@ -43,6 +46,7 @@ Logger::Logger()
 Logger::~Logger()
 {
     m_File.close();
+    OpenVino_Logs.close();
 #ifdef _WIN64
     DeleteCriticalSection(&m_Mutex);
 #else
@@ -98,7 +102,7 @@ string Logger::getCurrentTime()
     char        buf[80];
     localtime_s(&tstruct, &now);
 
-    strftime(buf, sizeof(buf), "%Y-%m-%d.%X", &tstruct);
+    strftime(buf, sizeof(buf), "%Y-%m-%d %X", &tstruct);
     return buf;
 }
 
@@ -110,11 +114,11 @@ void Logger::error(const char* text) throw()
     data.append(text);
 
     // ERROR must be capture
-    if (m_LogType == FILE_LOG) //display on .txt file
+    if (m_LogType == LogType::FILE_LOG) //display on .txt file
     {
         logIntoFile(data);
     }
-    else if (m_LogType == CONSOLE) //display log on console
+    else if (m_LogType == LogType::CONSOLE) //display log on console
     {
         logOnConsole(data);
     }
@@ -139,11 +143,11 @@ void Logger::alarm(const char* text) throw()
     data.append(text);
 
     // ALARM must be capture
-    if (m_LogType == FILE_LOG)
+    if (m_LogType == LogType::FILE_LOG)
     {
         logIntoFile(data);
     }
-    else if (m_LogType == CONSOLE)
+    else if (m_LogType == LogType::CONSOLE)
     {
         logOnConsole(data);
     }
@@ -168,11 +172,11 @@ void Logger::always(const char* text) throw()
     data.append(text);
 
     // No check for ALWAYS logs
-    if (m_LogType == FILE_LOG)
+    if (m_LogType == LogType::FILE_LOG)
     {
         logIntoFile(data);
     }
-    else if (m_LogType == CONSOLE)
+    else if (m_LogType == LogType::CONSOLE)
     {
         logOnConsole(data);
     }
@@ -194,13 +198,13 @@ void Logger::buffer(const char* text) throw()
 {
     // Buffer is the special case. So don't add log level
     // and timestamp in the buffer message. Just log the raw bytes.
-    if ((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_BUFFER))
+    if ((m_LogType == LogType::FILE_LOG) && (m_LogLevel >= LogLevel::LOG_LEVEL_BUFFER))
     {
         lock();
         m_File << text << endl;
         unlock();
     }
-    else if ((m_LogType == CONSOLE) && (m_LogLevel >= LOG_LEVEL_BUFFER))
+    else if ((m_LogType == LogType::CONSOLE) && (m_LogLevel >= LogLevel::LOG_LEVEL_BUFFER))
     {
         cout << text << endl;
     }
@@ -224,15 +228,43 @@ void Logger::info(const char* text) throw()
     data.append("[INFO]: ");
     data.append(text);
 
-    if ((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_INFO))
+    if ((m_LogType == LogType::FILE_LOG) && (m_LogLevel >= LogLevel::LOG_LEVEL_INFO))
     {
         logIntoFile(data);
     }
-    else if ((m_LogType == CONSOLE) && (m_LogLevel >= LOG_LEVEL_INFO))
+    else if ((m_LogType == LogType::CONSOLE) && (m_LogLevel >= LogLevel::LOG_LEVEL_INFO))
     {
         logOnConsole(data);
     }
 }
+
+/*
+inline void Logger::info(const std::shared_ptr<ov::Model>& model) noexcept
+{
+    ov::OutputVector inputs = model->inputs();
+    ov::OutputVector outputs = model->outputs();
+
+    OpenVino_Logs << model->get_friendly_name() << endl;
+    if ((m_LogType == LogType::FILE_LOG) && (m_LogLevel >= LogLevel::LOG_LEVEL_INFO))
+    {
+        OpenVino_Logs << "INPUTS";
+        // ov::Node is the backbone of graph value dataflow. Every node has zero or more nodes as arguments and one value, whuch is either a tensor or as (posibly aempty) tuple of values.
+        for (const ov::Output<ov::Node>& input : inputs)
+        {
+            OpenVino_Logs << getCurrentTime() << " " << input.get_any_name() << " , " << input.get_element_type() << endl << "\t \t" << input.get_node() << endl;
+            OpenVino_Logs << input.get_partial_shape() << endl << input.get_shape().data() << endl;
+        }
+
+        OpenVino_Logs << "OUTPUTS";
+
+        for (const ov::Output<ov::Node>& output : outputs)
+        {
+            OpenVino_Logs << getCurrentTime() << " " << output.get_any_name() << " , " << output.get_element_type() << endl << "\t \t" << output.get_node() << endl;
+            OpenVino_Logs << output.get_partial_shape() << endl << output.get_shape().data() << endl;
+        }
+    }
+}
+*/
 
 void Logger::info(std::string& text) throw()
 {
@@ -252,11 +284,11 @@ void Logger::trace(const char* text) throw()
     data.append("[TRACE]: ");
     data.append(text);
 
-    if ((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_TRACE))
+    if ((m_LogType == LogType::FILE_LOG) && (m_LogLevel >= LogLevel::LOG_LEVEL_TRACE))
     {
         logIntoFile(data);
     }
-    else if ((m_LogType == CONSOLE) && (m_LogLevel >= LOG_LEVEL_TRACE))
+    else if ((m_LogType == LogType::CONSOLE) && (m_LogLevel >= LogLevel::LOG_LEVEL_TRACE))
     {
         logOnConsole(data);
     }
@@ -280,11 +312,11 @@ void Logger::debug(const char* text) throw()
     data.append("[DEBUG]: ");
     data.append(text);
 
-    if ((m_LogType == FILE_LOG) && (m_LogLevel >= LOG_LEVEL_DEBUG))
+    if ((m_LogType == LogType::FILE_LOG) && (m_LogLevel >= LogLevel::LOG_LEVEL_DEBUG))
     {
         logIntoFile(data);
     }
-    else if ((m_LogType == CONSOLE) && (m_LogLevel >= LOG_LEVEL_DEBUG))
+    else if ((m_LogType == LogType::CONSOLE) && (m_LogLevel >= LogLevel::LOG_LEVEL_DEBUG))
     {
         logOnConsole(data);
     }
@@ -310,13 +342,13 @@ void Logger::updateLogLevel(LogLevel logLevel)
 // Enable all log levels
 void Logger::enaleLog()
 {
-    m_LogLevel = ENABLE_LOG;
+    m_LogLevel = LogLevel::ENABLE_LOG;
 }
 
 // Disable all log levels, except error and alarm
 void Logger::disableLog()
 {
-    m_LogLevel = DISABLE_LOG;
+    m_LogLevel = LogLevel::DISABLE_LOG;
 }
 
 // Interfaces to control log Types
@@ -327,11 +359,11 @@ void Logger::updateLogType(LogType logType)
 
 void Logger::enableConsoleLogging()
 {
-    m_LogType = CONSOLE;
+    m_LogType = LogType::CONSOLE;
 }
 
 void Logger::enableFileLogging()
 {
-    m_LogType = FILE_LOG;
+    m_LogType = LogType::FILE_LOG;
 }
 

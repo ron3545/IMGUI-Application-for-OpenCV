@@ -2,120 +2,114 @@
 #include "opencv2/face/facerec.hpp"
 #include "opencv2/face.hpp"
 #include <vector>
+#include "../Header Files/Log.h"
 
 using namespace cv;
-using namespace face;
+using namespace std;
 
-#pragma region LBP
+FaceRecognition::FaceRecognition(const char* fd_modelpath, const char* fr_modelpath) 
+	:	score_threshold(0.9), nms_threshold(0.3), 
+		topK(5000), cosine_similar_thresh(0.363), l2norm_similar_thresh(1.128), scale(1.0f)
+{	
+	//Initialize FaceDetectorYN
+	FD = FaceDetectorYN::create(fd_modelpath, "",Size(320, 320), score_threshold, nms_threshold, topK);
 
+	//initialize FaceRecognizerSF
+	FR = FaceRecognizerSF::create(fr_modelpath, "");
+}
 
-bool LBP::FaceRecognition::Detected(cv::Mat& frames)
+FaceRecognition::FaceRecognition()
+	: score_threshold(0.9), nms_threshold(0.3),
+	topK(5000), cosine_similar_thresh(0.363), l2norm_similar_thresh(1.128), scale(1.0f)
 {
-	cv::Mat Grayscale;
-	std::vector<cv::Rect> faces;
-	
-	cv::cvtColor(frames, Grayscale, cv::COLOR_BGR2GRAY);
-	cv::resize(Grayscale, Grayscale, cv::Size(Grayscale.size().width / scale, Grayscale.size().height/scale));
-	
-	cascade.detectMultiScale(Grayscale, faces, 1.2, 3, 0, cv::Size(30, 30));
-	if (!faces.empty())
-	{
-		HighlightFace(frames, faces);
+	//Initialize FaceDetectorYN
+	//FD = FaceDetectorYN::create("Resources/face_detection_yunet_2022mar.onnx", " " , Size(320, 320), score_threshold, nms_threshold, topK);
+
+	//initialize FaceRecognizerSF
+	FR = FaceRecognizerSF::create("Resources/face_recognition_sface_2021dec.onnx", "");
+}
+
+bool FaceRecognition::Face_Count(const cv::Mat& image, int required_face_num)
+{
+	FD->setInputSize(image.size());
+	Mat faces;
+	int face_count = 0;
+
+	FD->detect(image, faces);
+	if (faces.rows < 1)
+		return false;
+
+	for (int i = 0; i < faces.rows; i++)
+		++face_count;
+
+	if (face_count == required_face_num)
 		return true;
-	}
-	return false;
+	else
+		return false; 
 }
 
-inline std::string LBP::FaceRecognition::InttoStr(int i)
+bool FaceRecognition::Recognize(std::string& label, cv::Mat& frame, const std::map <std::string, jdbc::RegistryImages>& person_images, int frame_width, int frame_height)
 {
-	std::ostringstream tmp;
-	tmp << i;
-	return tmp.str();
-}
-
-bool LBP::FaceRecognition::Recognize(cv::Mat frames, const std::vector<cv::Mat>& images, const std::vector<int>& labels)
-{
-	if (Detected(frames))
-	{
-		Ptr<FaceRecognizer> recognizer = LBPHFaceRecognizer::create();
-		
-	}
-	return true;
-}
-
-LBP::FaceRecognition::~FaceRecognition()
-{
-	cv::destroyAllWindows();
-}
-
-//if database contains no data. This function sholud be called immediately before recognizing
-bool LBP::FaceRecognition::register_face(cv::Mat& baseMat,
-	std::vector<cv::Mat>& images,  const unsigned int image_number) noexcept
-{
-	cv::Mat derivedMat = { };
-	std::stringstream ss = { };
-	unsigned int img_counter = 0;
+	FD->setInputSize(Size(frame_width * scale, frame_height * scale));
 	
-	images.clear(); //should be cleared first bago gamitin
-	if (images.empty())
+	//inference
+	Mat faces, entry_face, features1, features2;
+	tm.start();
+	FD->detect(frame, faces);
+	if (faces.rows < 1)
+		return false;
+
+	Mat aligned_face1, aligned_face2;
+	for (std::pair<std::string, jdbc::RegistryImages> item : person_images) 
 	{
-		images.reserve(image_number);
-		
-		while (img_counter != image_number)
+		std::string current_name = item.first;
+		for (const cv::Mat& reg_face : item.second.images) 
 		{
-			crop_image(baseMat, derivedMat);
-			images.push_back(baseMat);
+			FD->detect(reg_face, entry_face);
 
-			++img_counter;
+			FR->alignCrop(reg_face, entry_face.row(0), aligned_face2);
+			FR->alignCrop(frame, faces.row(0), aligned_face1);
+
+			FR->feature(aligned_face1, features1);
+			features1 = features1.clone();
+			FR->feature(aligned_face2, features2);
+			features2 = features2.clone();
+
+			double cos_score = FR->match(features1, features2, FaceRecognizerSF::DisType::FR_COSINE);
+			double L2_score = FR->match(features1, features2, FaceRecognizerSF::DisType::FR_NORM_L2);
+
+			if (cos_score >= cosine_similar_thresh)//same identity
+				label = (current_name);
+			
+			else
+				label = "unknown";
 		}
-		return true;
 	}
-	
-	return false;
+	tm.stop();
+
+	BoundingBox(label, frame, faces, tm.getFPS());
 }
 
-void LBP::FaceRecognition::crop_image(const cv::Mat& input, cv::Mat& out) 
+bool FaceRecognition::BoundingBox(const std::string& label, const cv::Mat& input, cv::Mat& faces, double fps, int thickness, bool show_fps)
 {
-	std::vector<cv::Rect> faces;
-	cv::Rect ROI;
-
-	input.copyTo(out);
-
-	cv::cvtColor(out, out, cv::COLOR_BGR2GRAY);
-	cv::equalizeHist(out, out);
-
-	cv::resize(out, out, cv::Size(out.size().width / scale, out.size().height / scale));
-	cascade.detectMultiScale(out, faces, 1.1, 3, 0, cv::Size(30, 30));
+	std::string fpsString = cv::format("FPS : %.2f", (float)fps);
 	
-	//process one image at a time
-	//dont create copy every iteration
-	for (const cv::Rect& face_rect : faces)
+	for (int i = 0; i < faces.rows; i++)
 	{
-		ROI.x = cvRound(face_rect.x * scale);
-		ROI.y = cvRound(face_rect.y * scale);
+		Rect bbox = Rect(int(faces.at<float>(i, 0)), int(faces.at<float>(i, 1)), int(faces.at<float>(i, 2)), int(faces.at<float>(i, 3)));
+		
+		rectangle(input, bbox, Scalar(0, 255, 0), thickness);
 
-		ROI.height = (out.size().height - (face_rect.y * 3));
-		ROI.width = (out.size().width - (face_rect.x * 3));
+		if(!label.empty())
+			putText(input, label, Point(int(faces.at<float>(i, 0)), int(faces.at<float>(i, 1)) + 18), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 255, 0));
 
-		out = out(ROI); //croped image
+		circle(input, Point2i(int(faces.at<float>(i, 4)), int(faces.at<float>(i, 5))), 2, Scalar(255, 0, 0), thickness);
+		circle(input, Point2i(int(faces.at<float>(i, 6)), int(faces.at<float>(i, 7))), 2, Scalar(0, 0, 255), thickness);
+		circle(input, Point2i(int(faces.at<float>(i, 8)), int(faces.at<float>(i, 9))), 2, Scalar(0, 255, 0), thickness);
+		circle(input, Point2i(int(faces.at<float>(i, 10)), int(faces.at<float>(i, 11))), 2, Scalar(255, 0, 255), thickness);
+		circle(input, Point2i(int(faces.at<float>(i, 12)), int(faces.at<float>(i, 13))), 2, Scalar(0, 255, 255), thickness);
 	}
+	if(show_fps)
+		putText(input, fpsString, Point(0, 15), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
+	
 }
-
-void LBP::FaceRecognition::HighlightFace(cv::Mat& frames, std::vector<cv::Rect>& face)
-{
-	cv::Point textpoint;
-	cv::Scalar color = cv::Scalar(0, 255, 0);
-
-	for (const cv::Rect& area : face)
-	{
-		textpoint.x = area.x;
-		textpoint.y = area.y;
-
-		rectangle(frames, cv::Point(cvRound(area.x * scale), cvRound(area.y * scale)), cv::Point((cvRound(area.x + area.width - 1) * scale), (cvRound(area.y + area.height - 1) * scale)),
-			color, 2);
-
-		predicted_name = "  ";
-		cv::putText(frames, predicted_name, textpoint, 3, 0.5, BoundingBox_Color, 2);
-	}
-}
-#pragma endregion

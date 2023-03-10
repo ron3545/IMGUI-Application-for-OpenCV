@@ -1,50 +1,31 @@
 #pragma once
 #include "libraries.h"
 #include <sstream>
+#include "DataBase.h"
 
-namespace LBP 
+class FaceRecognition
 {
-	class FaceRecognition 
-	{
-	private:
-		const int line_thickness, scale;
-		const cv::Scalar BoundingBox_Color;
-		
-		std::string predicted_name;
-		cv::CascadeClassifier cascade;
+private:
+	float score_threshold, nms_threshold, topK;
+	double cosine_similar_thresh, l2norm_similar_thresh;
+	float scale;
+
+	cv::Ptr<cv::FaceDetectorYN> FD;
+	cv::Ptr<cv::FaceRecognizerSF> FR;
+	cv::TickMeter tm;
 	
-	public:
-		FaceRecognition() : line_thickness(2),
-			BoundingBox_Color(cv::Scalar(0, 255, 0)),
-			scale(4), predicted_name(" "), 
-			cascade("$(SolutionDir)/Resources/trained data/lbpcascade/lbpcascade_frontalface_improved.xml")
-		{}
+public:
+	FaceRecognition(const char* fd_modelpath, const char* fr_modelpath);
+	FaceRecognition();
+	
+	bool Recognize(std::string& label, cv::Mat& frame, const std::map <std::string, jdbc::RegistryImages>& person_images,
+		int frame_width, int frame_height);
 
-		FaceRecognition( const std::string& filename) : cascade(filename), 
-			line_thickness(2), BoundingBox_Color(cv::Scalar(0, 255, 0)),
-			scale(4), predicted_name(" ")
-		{}
-		~FaceRecognition();
-		bool register_face( cv::Mat& baseMat, 
-			std::vector<cv::Mat>& images, const unsigned int image_number = 9) noexcept;
-		bool Recognize(cv::Mat frames,const std::vector<cv::Mat>& images, const std::vector<int>& labels);
-	private:
-		void HighlightFace(cv::Mat& mat, std::vector<cv::Rect>& face);
-		bool Detected(cv::Mat& frames);
-		inline std::string InttoStr(int i);
-		void crop_image(const cv::Mat& input, cv::Mat& outut);
-	};
-}
+	//returns true if face counted is equal to the expected value set by the user
+	bool Face_Count(const cv::Mat& image, int required_face_num = 1);  
+private:
+	FaceRecognition(const FaceRecognition&);				//same reason na nakalagay sa DataBase.h
+	FaceRecognition& operator=(const FaceRecognition&);
 
-//the goal is to stream the video whle registering the face
-/*reference link for data training :
-	https://github.com/ni-chi-Tech
-*/
-
-/*
-export cv::Mat to mysql:
-	https://answers.opencv.org/question/228274/how-to-save-opencv-image-in-mysql-database/
-
- Convert blob images to Mat images:
-	https://stackoverflow.com/questions/23006396/convert-blob-images-to-mat-images
- */
+	bool BoundingBox(const std::string& label ,const cv::Mat& input, cv::Mat& faces, double fps, int thickness = 2, bool show_fps = false);
+};

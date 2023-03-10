@@ -5,39 +5,94 @@ https://dev.mysql.com/doc/connector-cpp/1.1/en/connector-cpp-examples-complete-e
 https://stackoverflow.com/questions/46800465/mysql-c-connector-how-to-retrieve-auto-increment-keys-from-insertion-query
 */
 
+//C:\Program Files\MySQL\Connector C++ 8.0\include
+
 #pragma once
+#pragma warning (disable : 26451)
+#pragma warning(disable : 4996)
+
+#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_DEPRECATE  
+#define _CRT_NONSTDC_NO_DEPRECATE
+
 #include "mysql/jdbc.h"
 #include <tchar.h>
 #include "..\Header Files\Log.h"
 #include <ostream>
 #include "opencv2/opencv.hpp"
 #include <array>
-
+#include <time.h>
+#include <map>
 /*
 	get the auto increment value of mysql:
 		https://stackoverflow.com/questions/46800465/mysql-c-connector-how-to-retrieve-auto-increment-keys-from-insertion-query
 */
+
 namespace jdbc
 {
-	typedef struct tbl_family_info {
-		std::string	FirstName, 
-					MiddleName, 
-					LastName, 
-					Relation, 
-					Sex,
-					Birthday; //YYYY-MM-DD
+	struct RegistryInfo
+	{
+		//data
+		int person_id;
+		std::string FirstName, MiddleName, LastName, Relation, Sex, Birthday;
 
-		tbl_family_info() {}
-		tbl_family_info(std::string first_name, std::string middle_name,
-						std::string last_name, std::string relation, 
-						std::string sex, std::string bday) 
-			:	FirstName(first_name), MiddleName(middle_name), LastName(last_name),
-				Relation(relation), Sex(sex), Birthday(bday) 
-		{}
+		RegistryInfo() : person_id(0){}
+		std::string Get_FullName() const 
+		{ 
+			return FirstName + " " + MiddleName + " " + LastName;
+		}
+		
+		void SetData(int person_id, std::string FirstName, std::string MiddleName, std::string LastName, 
+			std::string Relation, std::string Sex, std::string Birthday)
+		{
+			this->person_id		= person_id;
+			this->FirstName		= FirstName;
+			this->MiddleName	= MiddleName;
+			this->LastName		= LastName;
+			this->Relation		= Relation;
+			this->Sex			= Sex;
+			this->Birthday		= Birthday;
+		}
 
-	}Family;
+		int GetAge(int index) const
+		{
+			//date format passed into BirthDay sample: tuesday, 16 January 2022
+			int		Year = 0, Day = 0;
+			char*	month = nullptr;
+			char*	day_of_the_month = nullptr;
 
-	typedef struct Account 
+			if (sscanf(Birthday.c_str(), "%s %d %s %d", day_of_the_month, &Day, month, &Year) == NULL)
+				return 0;
+
+			time_t      now = time(NULL);
+			struct tm   tstruct;
+			localtime_s(&tstruct, &now);
+			
+			return tstruct.tm_year - Year;
+		}
+	};
+
+	struct RegistryImages
+	{
+		int image_id;
+		int person_id;
+		std::vector<cv::Mat> images;
+
+		void Set(int image_id, int person_id, const std::vector<cv::Mat>& images)
+		{
+			this->image_id	= image_id;
+			this->person_id = person_id;
+			this->images	= images;
+		}
+		void Clear()
+		{
+			this->images.clear();
+			this->image_id = 0;
+			this->person_id = 0;
+		}
+	};
+
+	struct Account 
 	{
 		std::string m_ptchHost, m_ptchUser, m_ptchPassword, m_ptchSchema;
 
@@ -49,17 +104,15 @@ namespace jdbc
 		void CleanAll();
 		void ClearEntry();
 		bool IsEmpty();
-	}Account;
+	};
 
 	class SQLDataBase
 	{
 	private:
 		sql::Driver*			m_driver;
 		sql::Connection*		m_con;
-		sql::ResultSet*			m_res;
-		sql::PreparedStatement* m_pstmt, *m_pstmt2;
 		
-		TCHAR* m_Host, * m_UserID, * m_Password, *m_schema;
+		TCHAR* m_Host = nullptr, * m_UserID = nullptr, * m_Password = nullptr, *m_schema = nullptr;
 		
 		struct MatInfo
 		{
@@ -67,73 +120,44 @@ namespace jdbc
 				: colmns(m_colmn), rows(m_rows), type(m_type) {}
 			int colmns, rows, type;
 
-			size_t Size() { return static_cast<size_t>(CV_ELEM_SIZE(type)) * rows * colmns; }
-			size_t RowSize() { return static_cast<size_t>(CV_ELEM_SIZE(type)) * colmns; }
+			size_t Size()		{ return CV_ELEM_SIZE(type) * rows * colmns;	}
+			size_t RowSize()	{ return CV_ELEM_SIZE(type) * colmns;			}
 		};
 
 	public:
 		SQLDataBase(void);
-		SQLDataBase(const SQLDataBase& db);
 		SQLDataBase(TCHAR* ptchHost, TCHAR* ptchUser, TCHAR* ptchDB, TCHAR* ptchPassword);
 		~SQLDataBase();
 
-		sql::Driver* GetDriver()	const	{ return m_driver; }
-		sql::Connection* GetConn()	const	{ return m_con; }
-		sql::Statement* GetStmt()	const	{ return m_pstmt; }
-		sql::ResultSet* GetResult() const	{ return m_res; }
+		sql::Driver* GetDriver()	const	{ return m_driver;	}
+		sql::Connection* GetConn()	const	{ return m_con;		}
 
-		TCHAR* GetHost()	const { return m_Host; }
-		TCHAR* GetUserID()	const { return m_UserID; }
-		TCHAR* GetPass()	const { return m_Password; }
-		TCHAR* GetSchema()	const { return m_schema; }
+		TCHAR* GetHost()	const { return m_Host;		}
+		TCHAR* GetUserID()	const { return m_UserID;	}
+		TCHAR* GetPass()	const { return m_Password;	}
+		TCHAR* GetSchema()	const { return m_schema;	}
 
-		void SetAccount(const Account& acc);
-		void SetHost(const TCHAR* host);
-		void SetUser(const TCHAR* user);
-		void SetPassword(const TCHAR* pass);
-		void SetSchema(const TCHAR* schema);
+		void SetAccount		(const Account& acc);
+		void SetHost		(const TCHAR* host);
+		void SetUser		(const TCHAR* user);
+		void SetPassword	(const TCHAR* pass);
+		void SetSchema		(const TCHAR* schema);
 
 		bool Connect() throw();
 		bool Connect(const TCHAR* ptchHost, const TCHAR* ptchUser, const TCHAR* ptchPassword, const TCHAR* ptchSchema) throw();
 		bool Disconnect() throw();
 
-		// tbl_family_info
-		bool InsertFamily(std::vector<std::stringstream>& data, const Family& query) noexcept;
-		bool InsertFamily(std::vector<std::stringstream>& data,  const std::string& FirstName, const std::string& MiddleName, const std::string& LastName, const std::string& Sex, const std::string& Relation, const std::string& Birthday);
-		Family GetInfo() noexcept; 
+		bool InsertFamily (const std::vector<cv::Mat>& images,  const std::string& FirstName, const std::string& MiddleName, const std::string& LastName, const std::string& Sex, const std::string& Relation, const std::string& Birthday);
+		void GetInfo (std::map<std::string, RegistryInfo>& person_info, std::map <std::string, RegistryImages>& person_images) noexcept;
 
+		bool Is_TableEmpty(const char* tbl_name);
+		bool InsertunknownPerson();
 	private:
+		SQLDataBase(const SQLDataBase&);				//prevent copyingin other object of this class
+		SQLDataBase& operator=(const SQLDataBase&);		//Same din sa part na toh. para pag ginawa ng user ito ay mag produce ng error during link-time
+
 		bool MatSerialize(std::ostream& out, const cv::Mat& mat);
 		bool MatDeserialize(std::istream& in, cv::Mat& out);
 	};
 }
 
-/*
-Sample Query:
-	https://dev.mysql.com/doc/connector-cpp/1.1/en/connector-cpp-examples-query.html
-
-Lesson:
-	
-	https://stackoverflow.com/questions/27480741/which-execute-function-should-i-use-in-mysql-connector-c
-	execute
-		This function is the most generic one. It returns a boolean value, which value is true if the query returns multiple results, or false if the query returns either nothing or an update count.
-
-		This is the function you'll want to use if you only want to use one to be as generic as possible.
-
-		If it returns true, you'll want to use ResultSet * getResultSet() to get the results.
-		If it returns false, you'll want to use uint64_t getUpdateCount() to get the number of updated rows.
-
-	executeQuery
-		This function directly returns a ResultSet which is useful for SELECT statements, and assumes there is indeed a result set to be returned.
-
-		It is equivalent to call execute() followed by getResultSet().
-
-		You'll want to use this function when you know you are using SQL code that returns results such as rows.
-
-	executeUpdate
-		This function returns an integer value which is useful for UPDATE statements and assumes there is an update count to be returned.
-
-		It is equivalent to call execute() followed by getUpdateCount(), even though, for some reason, the return types are different (int vs uint64_t).
-
-		This is the function to use when executing SQL statements that modify data and you need to know whether some data was modified.
-*/

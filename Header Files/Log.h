@@ -21,6 +21,20 @@
 
 #define HAVE_STRUCT_TIMESPEC
 
+#pragma region OpenVino
+#define CHECK(cond) CV_Assert(cond);
+
+#define PT_CHECK_BINARY(actual, expected, op) \
+    CV_Assert(actual op expected);
+
+#define PT_CHECK_EQ(actual, expected) PT_CHECK_BINARY(actual, expected, ==)
+#define PT_CHECK_NE(actual, expected) PT_CHECK_BINARY(actual, expected, !=)
+#define PT_CHECK_LT(actual, expected) PT_CHECK_BINARY(actual, expected, <)
+#define PT_CHECK_GT(actual, expected) PT_CHECK_BINARY(actual, expected, >)
+#define PT_CHECK_LE(actual, expected) PT_CHECK_BINARY(actual, expected, <=)
+#define PT_CHECK_GE(actual, expected) PT_CHECK_BINARY(actual, expected, >=)
+#pragma endregion
+
 namespace CPlusPlusLogging
 {
     // Direct Interface for logging into log file or console using MACRO(s)
@@ -33,7 +47,7 @@ namespace CPlusPlusLogging
     #define LOG_DEBUG(x)    Logger::getInstance()->debug(x)
 
     // enum for LOG_LEVEL
-    typedef enum LOG_LEVEL
+    typedef enum class LOG_LEVEL
     {
         DISABLE_LOG         = 1,
         LOG_LEVEL_INFO      = 2,
@@ -45,7 +59,7 @@ namespace CPlusPlusLogging
     }LogLevel;
 
     // enum for LOG_TYPE
-    typedef enum LOG_TYPE
+    typedef enum class LOG_TYPE
     {
         NO_LOG      = 1,
         CONSOLE     = 2,
@@ -81,6 +95,7 @@ namespace CPlusPlusLogging
         void info(const char* text) throw();
         void info(std::string& text) throw();
         void info(std::ostringstream& stream) throw();
+       
 
         // Interface for Trace log 
         void trace(const char* text) throw();
@@ -122,8 +137,9 @@ namespace CPlusPlusLogging
         void operator=(const Logger& obj) {}
 
     private:
-        static Logger* m_Instance;
+        static Logger*          m_Instance;
         std::ofstream           m_File;
+        std::ofstream           OpenVino_Logs;
 
 #ifdef	_WIN64
         CRITICAL_SECTION        m_Mutex;
